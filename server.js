@@ -7,7 +7,44 @@ const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const path = require('path');
 
 const app = express();
-app.use(cors());
+// app.use(cors());
+const allowedOrigins = [
+  "https://www.gyanmurli.younghappyandhealthy.com",
+  "https://gyanmurli.younghappyandhealthy.com", // Include both with and without 'www'
+  "http://localhost:3000", // For local development
+  "http://localhost:5173", // Vite local port (if using Vite)
+  "http://localhost:4200", // Angular local port
+];
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like Postman, Curl, or mobile apps)
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      } else {
+        console.error("CORS blocked origin:", origin);
+        // Pass false instead of an Error object to prevent 500 crashes
+        return callback(null, false);
+      }
+    },
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "x-language",
+      "X-Language",
+      "Accept",
+      "*",
+    ],
+    AllowedOrigins: ["*"],
+    ExposeHeaders: [],
+    credentials: true,
+    optionsSuccessStatus: 200, // Fixes issues with legacy browsers/proxies
+  }),
+);
 app.use(express.json());
 
 // MySQL Connection Pool
