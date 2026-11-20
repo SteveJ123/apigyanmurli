@@ -128,7 +128,94 @@ app.get('/api/murli/:lang/:year', async (req, res) => {
 });
 
 // POST: Upload files to S3 (or accept direct S3 URLs) + save row to MySQL
-app.post('/api/murli', uploadFields, async (req, res) => {
+// app.post('/api/murli', uploadFields, async (req, res) => {
+//   try {
+//     const {
+//       language,
+//       year,
+//       murli_date,
+//       text_html_url,
+//       text_pdf_url,
+//       essence_html_url,
+//       essence_pdf_url,
+//       audio_mp3_url,
+//       audio_mp4_url,
+//     } = req.body;
+
+//     const cleanLang = (language || '').toLowerCase().trim();
+//     const parsedYear = parseInt(year, 10);
+//     const cleanDate = (murli_date || '').trim();
+
+//     if (!['telugu', 'hindi', 'english'].includes(cleanLang)) {
+//       return res.status(400).json({ message: 'Language must be telugu, hindi, or english' });
+//     }
+//     if (!parsedYear || !cleanDate) {
+//       return res.status(400).json({ message: 'Year and text date (e.g. 05.01.1969) are required' });
+//     }
+
+//     const folder = `murli/${cleanLang}/${parsedYear}`;
+//     const files = req.files || {};
+
+//     // Upload attached files to S3 if provided, otherwise keep manual S3 URL input
+//     const finalTextHtml =
+//       (await uploadBufferToS3(files.textHtmlFile?.[0], folder)) || text_html_url || null;
+//     const finalTextPdf =
+//       (await uploadBufferToS3(files.textPdfFile?.[0], folder)) || text_pdf_url || null;
+//     const finalEssenceHtml =
+//       (await uploadBufferToS3(files.essenceHtmlFile?.[0], folder)) || essence_html_url || null;
+//     const finalEssencePdf =
+//       (await uploadBufferToS3(files.essencePdfFile?.[0], folder)) || essence_pdf_url || null;
+//     const finalAudioMp3 =
+//       (await uploadBufferToS3(files.audioMp3File?.[0], folder)) || audio_mp3_url || null;
+//     const finalAudioMp4 =
+//       (await uploadBufferToS3(files.audioMp4File?.[0], folder)) || audio_mp4_url || null;
+
+//     const [result] = await pool.execute(
+//       `INSERT INTO murli_entries
+//        (language, year, murli_date, text_html_url, text_pdf_url, essence_html_url, essence_pdf_url, audio_mp3_url, audio_mp4_url)
+//        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+//       [
+//         cleanLang,
+//         parsedYear,
+//         cleanDate,
+//         finalTextHtml,
+//         finalTextPdf,
+//         finalEssenceHtml,
+//         finalEssencePdf,
+//         finalAudioMp3,
+//         finalAudioMp4,
+//       ]
+//     );
+
+//     res.status(201).json({
+//       message: 'Murli entry saved and uploaded to S3',
+//       id: result.insertId,
+//       data: {
+//         id: result.insertId,
+//         language: cleanLang,
+//         year: parsedYear,
+//         murli_date: cleanDate,
+//         text_html_url: finalTextHtml,
+//         text_pdf_url: finalTextPdf,
+//         essence_html_url: finalEssenceHtml,
+//         essence_pdf_url: finalEssencePdf,
+//         audio_mp3_url: finalAudioMp3,
+//         audio_mp4_url: finalAudioMp4,
+//       },
+//     });
+//   } catch (err) {
+//     console.error('Upload/Save error:', err);
+//     res.status(500).json({ message: 'Failed to upload to S3 or save to database' });
+//   }
+// });
+
+const normalizeUrl = (val) => {
+  if (typeof val !== 'string') return null;
+  const trimmed = val.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+app.post('/api/murli', async (req, res) => {
   try {
     const {
       language,
@@ -153,22 +240,12 @@ app.post('/api/murli', uploadFields, async (req, res) => {
       return res.status(400).json({ message: 'Year and text date (e.g. 05.01.1969) are required' });
     }
 
-    const folder = `murli/${cleanLang}/${parsedYear}`;
-    const files = req.files || {};
-
-    // Upload attached files to S3 if provided, otherwise keep manual S3 URL input
-    const finalTextHtml =
-      (await uploadBufferToS3(files.textHtmlFile?.[0], folder)) || text_html_url || null;
-    const finalTextPdf =
-      (await uploadBufferToS3(files.textPdfFile?.[0], folder)) || text_pdf_url || null;
-    const finalEssenceHtml =
-      (await uploadBufferToS3(files.essenceHtmlFile?.[0], folder)) || essence_html_url || null;
-    const finalEssencePdf =
-      (await uploadBufferToS3(files.essencePdfFile?.[0], folder)) || essence_pdf_url || null;
-    const finalAudioMp3 =
-      (await uploadBufferToS3(files.audioMp3File?.[0], folder)) || audio_mp3_url || null;
-    const finalAudioMp4 =
-      (await uploadBufferToS3(files.audioMp4File?.[0], folder)) || audio_mp4_url || null;
+    const finalTextHtml = normalizeUrl(text_html_url);
+    const finalTextPdf = normalizeUrl(text_pdf_url);
+    const finalEssenceHtml = normalizeUrl(essence_html_url);
+    const finalEssencePdf = normalizeUrl(essence_pdf_url);
+    const finalAudioMp3 = normalizeUrl(audio_mp3_url);
+    const finalAudioMp4 = normalizeUrl(audio_mp4_url);
 
     const [result] = await pool.execute(
       `INSERT INTO murli_entries
@@ -188,7 +265,7 @@ app.post('/api/murli', uploadFields, async (req, res) => {
     );
 
     res.status(201).json({
-      message: 'Murli entry saved and uploaded to S3',
+      message: 'Murli entry saved successfully',
       id: result.insertId,
       data: {
         id: result.insertId,
@@ -204,9 +281,13 @@ app.post('/api/murli', uploadFields, async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('Upload/Save error:', err);
-    res.status(500).json({ message: 'Failed to upload to S3 or save to database' });
+    console.error('Save error:', err);
+    res.status(500).json({ message: 'Failed to save Murli entry to database' });
   }
+});
+
+app.get('/api/health', (req, res) => {
+  res.json({ ok: true, message: 'Murli API is running' });
 });
 
 const PORT = process.env.PORT || 5000;
