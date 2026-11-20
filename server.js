@@ -100,6 +100,33 @@ async function uploadBufferToS3(file, folderPath) {
 }
 
 // GET: Fetch all date rows by language and year
+// app.get('/api/murli/:lang/:year', async (req, res) => {
+//   try {
+//     const lang = req.params.lang.toLowerCase();
+//     const year = parseInt(req.params.year, 10);
+
+//     if (!['telugu', 'hindi', 'english'].includes(lang) || Number.isNaN(year)) {
+//       return res.status(400).json({ message: 'Invalid language or year' });
+//     }
+
+//     const [rows] = await pool.execute(
+//       `SELECT id, language, year, murli_date,
+//               text_html_url, text_pdf_url,
+//               essence_html_url, essence_pdf_url,
+//               audio_mp3_url, audio_mp4_url
+//        FROM murli_entries
+//        WHERE language = ? AND year = ?
+//        ORDER BY id ASC`,
+//       [lang, year]
+//     );
+
+//     res.json(rows);
+//   } catch (err) {
+//     console.error('Fetch error:', err);
+//     res.status(500).json({ message: 'Failed to load Murli entries' });
+//   }
+// });
+
 app.get('/api/murli/:lang/:year', async (req, res) => {
   try {
     const lang = req.params.lang.toLowerCase();
@@ -123,7 +150,11 @@ app.get('/api/murli/:lang/:year', async (req, res) => {
     res.json(rows);
   } catch (err) {
     console.error('Fetch error:', err);
-    res.status(500).json({ message: 'Failed to load Murli entries' });
+    res.status(500).json({
+      message: 'Failed to load Murli entries',
+      code: err?.code,
+      sqlMessage: err?.sqlMessage || err?.message,
+    });
   }
 });
 
