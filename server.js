@@ -286,7 +286,7 @@ app.post('/api/murli', async (req, res) => {
   }
 });
 
-app.get('/api/health', (req, res) => {
+app.get('/api/test', (req, res) => {
   res.json({ ok: true, message: 'Murli API is running' });
 });
 
