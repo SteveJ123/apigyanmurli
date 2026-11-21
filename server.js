@@ -6,6 +6,12 @@ const multer = require('multer');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const path = require('path');
 
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+
+const MOBILE_REGEX = /^[6-9]\d{9}$/;
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
+
 const app = express();
 // app.use(cors());
 const allowedOrigins = [
@@ -320,6 +326,115 @@ app.post('/api/murli', async (req, res) => {
 app.get('/api/test', (req, res) => {
   res.json({ ok: true, message: 'Murli API is running' });
   // adfadfa
+});
+
+function signToken(user) {
+  return jwt.sign(
+    { userId: user.id, mobile: user.mobile },
+    JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+}
+
+// POST /api/auth/register — Register with mobile number and password
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const mobile = String(req.body?.mobile || '').trim();
+    const password = String(req.body?.password || '');
+
+    if (!MOBILE_REGEX.test(mobile)) {
+      return res.status(400).json({
+        message: 'Please enter a valid 10-digit mobile number.',
+      });
+    }
+
+    if (password.length < 8) {
+      return res.status(400).json({
+        message: 'Password must be at least 8 characters long.',
+      });
+    }
+
+    const [existing] = await pool.execute(
+      'SELECT id FROM users WHERE mobile = ? LIMIT 1',
+      [mobile]
+    );
+
+    if (existing.length > 0) {
+      return res.status(409).json({
+        message: 'An account with this mobile number already exists.',
+      });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const [result] = await pool.execute(
+      'INSERT INTO users (mobile, password_hash) VALUES (?, ?)',
+      [mobile, passwordHash]
+    );
+
+    const user = { id: result.insertId, mobile };
+    const token = signToken(user);
+
+    return res.status(201).json({
+      message: 'Registered successfully.',
+      token,
+      user,
+    });
+  } catch (err) {
+    if (err?.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({
+        message: 'An account with this mobile number already exists.',
+      });
+    }
+    console.error('Register error:', err);
+    return res.status(500).json({ message: 'Failed to register user.' });
+  }
+});
+
+// POST /api/auth/login — Login with mobile number and password
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const mobile = String(req.body?.mobile || '').trim();
+    const password = String(req.body?.password || '');
+
+    if (!MOBILE_REGEX.test(mobile) || !password) {
+      return res.status(400).json({
+        message: 'Mobile number and password are required.',
+      });
+    }
+
+    const [rows] = await pool.execute(
+      'SELECT id, mobile, password_hash FROM users WHERE mobile = ? LIMIT 1',
+      [mobile]
+    );
+
+    if (rows.length === 0) {
+      return res.status(401).json({
+        message: 'Invalid mobile number or password.',
+      });
+    }
+
+    const dbUser = rows[0];
+    const isMatch = await bcrypt.compare(password, dbUser.password_hash);
+
+    if (!isMatch) {
+      return res.status(401).json({
+        message: 'Invalid mobile number or password.',
+      });
+    }
+
+    const user = { id: dbUser.id, mobile: dbUser.mobile };
+    const token = signToken(user);
+
+    return res.json({
+      message: 'Logged in successfully.',
+      token,
+      user,
+    });
+  } catch (err) {
+    console.error('Login error:', err);
+    return res.status(500).json({ message: 'Failed to log in.' });
+  }
 });
 
 const PORT = process.env.PORT || 5000;
