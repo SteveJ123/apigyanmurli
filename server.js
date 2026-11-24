@@ -437,5 +437,138 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+// Middleware to verify JWT token for protected write operations
+function requireAuth(req, res, next) {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+
+  if (!token) {
+    return res.status(401).json({ message: 'Unauthorized: Missing token' });
+  }
+
+  try {
+    req.user = jwt.verify(token, JWT_SECRET);
+    return next();
+  } catch (err) {
+    return res.status(401).json({ message: 'Unauthorized: Invalid or expired token' });
+  }
+}
+
+// PUT: Update an existing Murli entry by ID
+app.put('/api/murli/:id',  async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (Number.isNaN(id) || id <= 0) {
+      return res.status(400).json({ message: 'Invalid Murli entry ID' });
+    }
+
+    const {
+      language,
+      year,
+      murli_date,
+      text_html_url,
+      text_pdf_url,
+      essence_html_url,
+      essence_pdf_url,
+      audio_mp3_url,
+      audio_mp4_url,
+    } = req.body;
+
+    const cleanLang = (language || '').toLowerCase().trim();
+    const parsedYear = parseInt(year, 10);
+    const cleanDate = (murli_date || '').trim();
+
+    if (!['telugu', 'hindi', 'english'].includes(cleanLang)) {
+      return res.status(400).json({ message: 'Language must be telugu, hindi, or english' });
+    }
+    if (!parsedYear || !cleanDate) {
+      return res.status(400).json({ message: 'Year and date are required' });
+    }
+
+    const finalTextHtml = normalizeUrl(text_html_url);
+    const finalTextPdf = normalizeUrl(text_pdf_url);
+    const finalEssenceHtml = normalizeUrl(essence_html_url);
+    const finalEssencePdf = normalizeUrl(essence_pdf_url);
+    const finalAudioMp3 = normalizeUrl(audio_mp3_url);
+    const finalAudioMp4 = normalizeUrl(audio_mp4_url);
+
+    const [result] = await pool.execute(
+      `UPDATE murli_entries
+       SET language = ?,
+           year = ?,
+           murli_date = ?,
+           text_html_url = ?,
+           text_pdf_url = ?,
+           essence_html_url = ?,
+           essence_pdf_url = ?,
+           audio_mp3_url = ?,
+           audio_mp4_url = ?
+       WHERE id = ?`,
+      [
+        cleanLang,
+        parsedYear,
+        cleanDate,
+        finalTextHtml,
+        finalTextPdf,
+        finalEssenceHtml,
+        finalEssencePdf,
+        finalAudioMp3,
+        finalAudioMp4,
+        id,
+      ]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'Murli entry not found' });
+    }
+
+    return res.json({
+      message: 'Murli entry updated successfully',
+      data: {
+        id,
+        language: cleanLang,
+        year: parsedYear,
+        murli_date: cleanDate,
+        text_html_url: finalTextHtml,
+        text_pdf_url: finalTextPdf,
+        essence_html_url: finalEssenceHtml,
+        essence_pdf_url: finalEssencePdf,
+        audio_mp3_url: finalAudioMp3,
+        audio_mp4_url: finalAudioMp4,
+      },
+    });
+  } catch (err) {
+    console.error('Update error:', err);
+    return res.status(500).json({ message: 'Failed to update Murli entry' });
+  }
+});
+
+// DELETE: Delete a Murli entry by ID
+app.delete('/api/murli/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (Number.isNaN(id) || id <= 0) {
+      return res.status(400).json({ message: 'Invalid Murli entry ID' });
+    }
+
+    const [result] = await pool.execute(
+      'DELETE FROM murli_entries WHERE id = ?',
+      [id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'Murli entry not found' });
+    }
+
+    return res.json({
+      message: 'Murli entry deleted successfully',
+      id,
+    });
+  } catch (err) {
+    console.error('Delete error:', err);
+    return res.status(500).json({ message: 'Failed to delete Murli entry' });
+  }
+});
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
