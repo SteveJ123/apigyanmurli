@@ -336,11 +336,129 @@ function signToken(user) {
   );
 }
 
+const ALLOWED_LANGUAGES = new Set(['english', 'telugu', 'hindi']);
+
 // POST /api/auth/register — Register with mobile number and password
+// app.post('/api/auth/register', async (req, res) => {
+//   try {
+//     const mobile = String(req.body?.mobile || '').trim();
+//     const password = String(req.body?.password || '');
+
+//     if (!MOBILE_REGEX.test(mobile)) {
+//       return res.status(400).json({
+//         message: 'Please enter a valid 10-digit mobile number.',
+//       });
+//     }
+
+//     if (password.length < 8) {
+//       return res.status(400).json({
+//         message: 'Password must be at least 8 characters long.',
+//       });
+//     }
+
+//     const [existing] = await pool.execute(
+//       'SELECT id FROM users WHERE mobile = ? LIMIT 1',
+//       [mobile]
+//     );
+
+//     if (existing.length > 0) {
+//       return res.status(409).json({
+//         message: 'An account with this mobile number already exists.',
+//       });
+//     }
+
+//     const passwordHash = await bcrypt.hash(password, 10);
+
+//     const [result] = await pool.execute(
+//       'INSERT INTO users (mobile, password_hash) VALUES (?, ?)',
+//       [mobile, passwordHash]
+//     );
+
+//     const user = { id: result.insertId, mobile };
+//     const token = signToken(user);
+
+//     return res.status(201).json({
+//       message: 'Registered successfully.',
+//       token,
+//       user,
+//     });
+//   } catch (err) {
+//     if (err?.code === 'ER_DUP_ENTRY') {
+//       return res.status(409).json({
+//         message: 'An account with this mobile number already exists.',
+//       });
+//     }
+//     console.error('Register error:', err);
+//     return res.status(500).json({ message: 'Failed to register user.' });
+//   }
+// });
+
+// POST /api/auth/login — Login with mobile number and password
+// app.post('/api/auth/login', async (req, res) => {
+//   try {
+//     const mobile = String(req.body?.mobile || '').trim();
+//     const password = String(req.body?.password || '');
+
+//     if (!MOBILE_REGEX.test(mobile) || !password) {
+//       return res.status(400).json({
+//         message: 'Mobile number and password are required.',
+//       });
+//     }
+
+//     const [rows] = await pool.execute(
+//       'SELECT id, mobile, password_hash FROM users WHERE mobile = ? LIMIT 1',
+//       [mobile]
+//     );
+
+//     if (rows.length === 0) {
+//       return res.status(401).json({
+//         message: 'Invalid mobile number or password.',
+//       });
+//     }
+
+//     const dbUser = rows[0];
+//     const isMatch = await bcrypt.compare(password, dbUser.password_hash);
+
+//     if (!isMatch) {
+//       return res.status(401).json({
+//         message: 'Invalid mobile number or password.',
+//       });
+//     }
+
+//     const user = { id: dbUser.id, mobile: dbUser.mobile };
+//     const token = signToken(user);
+
+//     return res.json({
+//       message: 'Logged in successfully.',
+//       token,
+//       user,
+//     });
+//   } catch (err) {
+//     console.error('Login error:', err);
+//     return res.status(500).json({ message: 'Failed to log in.' });
+//   }
+// });
+
 app.post('/api/auth/register', async (req, res) => {
   try {
+    const name = String(req.body?.name || '').trim();
+    const rawLanguage = String(req.body?.language || 'english')
+      .trim()
+      .toLowerCase();
     const mobile = String(req.body?.mobile || '').trim();
     const password = String(req.body?.password || '');
+
+    // if (!name) {
+    //   return res.status(400).json({
+    //     message: 'Please enter your full name.',
+    //   });
+    // }
+
+    if (!ALLOWED_LANGUAGES.has(rawLanguage)) {
+      return res.status(400).json({
+        message: 'Language must be english, telugu, or hindi.',
+      });
+    }
 
     if (!MOBILE_REGEX.test(mobile)) {
       return res.status(400).json({
@@ -348,11 +466,11 @@ app.post('/api/auth/register', async (req, res) => {
       });
     }
 
-    if (password.length < 8) {
-      return res.status(400).json({
-        message: 'Password must be at least 8 characters long.',
-      });
-    }
+    // if (password.length < 4) {
+    //   return res.status(400).json({
+    //     message: 'Password must be at least 8 characters long.',
+    //   });
+    // }
 
     const [existing] = await pool.execute(
       'SELECT id FROM users WHERE mobile = ? LIMIT 1',
@@ -368,11 +486,16 @@ app.post('/api/auth/register', async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
 
     const [result] = await pool.execute(
-      'INSERT INTO users (mobile, password_hash) VALUES (?, ?)',
-      [mobile, passwordHash]
+      'INSERT INTO users (name, language, mobile, password_hash) VALUES (?, ?, ?, ?)',
+      [name, rawLanguage, mobile, passwordHash]
     );
 
-    const user = { id: result.insertId, mobile };
+    const user = {
+      id: result.insertId,
+      name,
+      language: rawLanguage,
+      mobile,
+    };
     const token = signToken(user);
 
     return res.status(201).json({
@@ -404,7 +527,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     const [rows] = await pool.execute(
-      'SELECT id, mobile, password_hash FROM users WHERE mobile = ? LIMIT 1',
+      'SELECT id, name, language, mobile, password_hash FROM users WHERE mobile = ? LIMIT 1',
       [mobile]
     );
 
@@ -423,7 +546,12 @@ app.post('/api/auth/login', async (req, res) => {
       });
     }
 
-    const user = { id: dbUser.id, mobile: dbUser.mobile };
+    const user = {
+      id: dbUser.id,
+      name: dbUser.name,
+      language: dbUser.language || 'english',
+      mobile: dbUser.mobile,
+    };
     const token = signToken(user);
 
     return res.json({
