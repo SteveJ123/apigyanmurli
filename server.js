@@ -53,6 +53,9 @@ app.use(
 );
 app.use(express.json());
 
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
 // MySQL Connection Pool
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
@@ -695,6 +698,87 @@ app.delete('/api/murli/:id', async (req, res) => {
   } catch (err) {
     console.error('Delete error:', err);
     return res.status(500).json({ message: 'Failed to delete Murli entry' });
+  }
+});
+
+
+app.post('/api/murlilist', async (req, res) => {
+  try {
+    const rawItems = Array.isArray(req.body?.entries) ? req.body.entries : [req.body];
+
+    if (!rawItems.length) {
+      return res.status(400).json({ message: 'No Murli entries provided' });
+    }
+
+    const validEntries = [];
+    const skipped = [];
+
+    for (const item of rawItems) {
+      const {
+        language,
+        year,
+        murli_date,
+        text_html_url,
+        text_pdf_url,
+        essence_html_url,
+        essence_pdf_url,
+        audio_mp3_url,
+        audio_mp4_url,
+      } = item || {};
+
+      const cleanLang = (language || '').toLowerCase().trim();
+      const parsedYear = parseInt(year, 10);
+      const cleanDate = (murli_date || '').trim();
+
+      if (!['telugu', 'hindi', 'english'].includes(cleanLang)) {
+        skipped.push({ murli_date: cleanDate, reason: 'Invalid language' });
+        continue;
+      }
+      if (!parsedYear || !cleanDate) {
+        skipped.push({ murli_date: cleanDate, reason: 'Missing year or murli_date' });
+        continue;
+      }
+
+      validEntries.push([
+        cleanLang,
+        parsedYear,
+        cleanDate,
+        normalizeUrl(text_html_url),
+        normalizeUrl(text_pdf_url),
+        normalizeUrl(essence_html_url),
+        normalizeUrl(essence_pdf_url),
+        normalizeUrl(audio_mp3_url),
+        normalizeUrl(audio_mp4_url),
+      ]);
+    }
+
+    if (!validEntries.length) {
+      return res.status(400).json({
+        message: 'No valid Murli entries to save',
+        skipped,
+      });
+    }
+
+    const placeholders = validEntries.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
+    const flatValues = validEntries.flat();
+
+    const [result] = await pool.execute(
+      `INSERT INTO murli_entries
+       (language, year, murli_date, text_html_url, text_pdf_url, essence_html_url, essence_pdf_url, audio_mp3_url, audio_mp4_url)
+       VALUES ${placeholders}`,
+      flatValues
+    );
+
+    res.status(201).json({
+      message: `Saved ${validEntries.length} Murli entry/entries successfully`,
+      insertedCount: validEntries.length,
+      skippedCount: skipped.length,
+      skipped,
+      insertId: result.insertId,
+    });
+  } catch (err) {
+    console.error('Save error:', err);
+    res.status(500).json({ message: 'Failed to save Murli entry to database' });
   }
 });
 
