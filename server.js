@@ -141,7 +141,7 @@ app.get('/api/murli/:lang/:year', async (req, res) => {
     const lang = req.params.lang.toLowerCase();
     const year = parseInt(req.params.year, 10);
 
-    if (!['telugu', 'hindi', 'english'].includes(lang) || Number.isNaN(year)) {
+    if (!['telugu', 'hindi', 'english', 'tamil', 'kannada', 'gujarati'].includes(lang) || Number.isNaN(year)) {
       return res.status(400).json({ message: 'Invalid language or year' });
     }
 
@@ -730,7 +730,7 @@ app.post('/api/murlilist', async (req, res) => {
       const parsedYear = parseInt(year, 10);
       const cleanDate = (murli_date || '').trim();
 
-      if (!['telugu', 'hindi', 'english'].includes(cleanLang)) {
+      if (!['telugu', 'hindi', 'english', 'tamil', 'kannada', 'gujarati'].includes(cleanLang)) {
         skipped.push({ murli_date: cleanDate, reason: 'Invalid language' });
         continue;
       }
