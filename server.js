@@ -782,5 +782,151 @@ app.post('/api/murlilist', async (req, res) => {
   }
 });
 
+function isValidHttpUrl(value) {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+// POST /api/blessings/:langCode/images
+app.post('/api/blessings/:langCode/images', async (req, res) => {
+  try {
+    const langCode = (req.params.langCode || '').trim().toLowerCase();
+    const imageUrl = (req.body?.imageUrl || req.body?.image_url || '').trim();
+
+    if (!ALLOWED_LANGUAGES.has(langCode)) {
+      return res.status(400).json({
+        error: `Unsupported language '${langCode}'. Allowed: ${Array.from(ALLOWED_LANGUAGES).join(', ')}`,
+      });
+    }
+
+    if (!imageUrl || !isValidHttpUrl(imageUrl)) {
+      return res.status(400).json({
+        error: 'A valid http or https image URL is required.',
+      });
+    }
+
+    const [result] = await pool.execute(
+      'INSERT INTO `blessing_images` (`language`, `image_url`) VALUES (?, ?)',
+      [langCode, imageUrl]
+    );
+
+    const [rows] = await pool.execute(
+      'SELECT `id`, `language`, `image_url`, `created_at` FROM `blessing_images` WHERE `id` = ?',
+      [result.insertId]
+    );
+
+    return res.status(201).json({
+      message: 'Image URL saved successfully.',
+      data: rows[0],
+    });
+  } catch (err) {
+    console.error('Error saving blessing image URL:', err);
+    return res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// GET /api/blessings/:langCode/images
+app.get('/api/blessings/:langCode/images', async (req, res) => {
+  try {
+    const langCode = (req.params.langCode || '').trim().toLowerCase();
+
+    if (!ALLOWED_LANGUAGES.has(langCode)) {
+      return res.status(400).json({
+        error: `Unsupported language '${langCode}'.`,
+      });
+    }
+
+    const [rows] = await pool.execute(
+      'SELECT `id`, `language`, `image_url`, `created_at` FROM `blessing_images` WHERE `language` = ? ORDER BY `created_at` DESC, `id` DESC',
+      [langCode]
+    );
+
+    return res.json({ data: rows });
+  } catch (err) {
+    console.error('Error fetching blessing images:', err);
+    return res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// DELETE /api/blessings/:langCode/images/:id
+app.delete('/api/blessings/:langCode/images/:id', async (req, res) => {
+  try {
+    const langCode = (req.params.langCode || '').trim().toLowerCase();
+    const id = Number(req.params.id);
+
+    if (!ALLOWED_LANGUAGES.has(langCode) || !Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'Invalid language or image ID.' });
+    }
+
+    const [result] = await pool.execute(
+      'DELETE FROM `blessing_images` WHERE `id` = ? AND `language` = ?',
+      [id, langCode]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Image not found.' });
+    }
+
+    return res.json({ message: 'Image deleted successfully.' });
+  } catch (err) {
+    console.error('Error deleting blessing image:', err);
+    return res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// PUT /api/blessings/:langCode/images/:id
+app.put('/api/blessings/:langCode/images/:id', async (req, res) => {
+  try {
+    const langCode = (req.params.langCode || '').trim().toLowerCase();
+    const id = Number(req.params.id);
+    const imageUrl = (req.body?.imageUrl || req.body?.image_url || '').trim();
+    const nextLanguage = req.body?.language
+      ? String(req.body.language).trim().toLowerCase()
+      : langCode;
+
+    if (!ALLOWED_LANGUAGES.has(langCode) || !Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'Invalid language or image ID.' });
+    }
+
+    if (!ALLOWED_LANGUAGES.has(nextLanguage)) {
+      return res.status(400).json({
+        error: `Unsupported language '${nextLanguage}'. Allowed: ${Array.from(ALLOWED_LANGUAGES).join(', ')}`,
+      });
+    }
+
+    if (!imageUrl || !isValidHttpUrl(imageUrl)) {
+      return res.status(400).json({
+        error: 'A valid http or https image URL is required.',
+      });
+    }
+
+    const [result] = await pool.execute(
+      'UPDATE `blessing_images` SET `image_url` = ?, `language` = ? WHERE `id` = ? AND `language` = ?',
+      [imageUrl, nextLanguage, id, langCode]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Image not found.' });
+    }
+
+    const [rows] = await pool.execute(
+      'SELECT `id`, `language`, `image_url`, `created_at` FROM `blessing_images` WHERE `id` = ?',
+      [id]
+    );
+
+    return res.json({
+      message: 'Image URL updated successfully.',
+      data: rows[0],
+    });
+  } catch (err) {
+    console.error('Error updating blessing image:', err);
+    return res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
